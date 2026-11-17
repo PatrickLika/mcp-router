@@ -1,3 +1,5 @@
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+# Import the router package from the repo root, however pytest is started.
+pythonpath = ["."]
