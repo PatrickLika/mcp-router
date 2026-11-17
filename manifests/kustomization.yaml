@@ -1,14 +1,11 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-
 namespace: mcp
-
 resources:
   - namespace.yaml
   - pvc.yaml
   - deployment.yaml
   - service.yaml
-
 # Both hashed into their names, so editing either one restarts the pod.
 configMapGenerator:
   - name: mcp-router-env
@@ -17,9 +14,8 @@ configMapGenerator:
   - name: mcp-router-upstreams
     files:
       - upstreams.yaml
-
 # The single place the router version is pinned. Bumped by a PR that
 # .github/workflows/build.yml opens after each image build.
 images:
   - name: ghcr.io/patricklika/mcp-router
-    newTag: unset
+    newTag: sha-9bedd84
