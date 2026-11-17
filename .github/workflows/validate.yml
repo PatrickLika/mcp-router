@@ -1,0 +1,74 @@
+# Every PR, on GitHub's hardware. Touches nothing of yours.
+name: validate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - run: pip install -r requirements-dev.txt
+      - run: pytest -q
+
+  manifests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install kustomize and kubeconform
+        run: |
+          set -euo pipefail
+          curl -fsSL "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+          sudo mv kustomize /usr/local/bin/
+          curl -fsSL "https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz" \
+            | sudo tar -xz -C /usr/local/bin kubeconform
+
+      - name: Render and schema-validate
+        run: |
+          set -euo pipefail
+          kustomize build manifests > rendered.yaml
+          cat rendered.yaml
+          kubeconform -strict -summary -ignore-missing-schemas rendered.yaml
+
+      - name: Image tag is pinned
+        run: |
+          set -euo pipefail
+          TAG="$(yq -r '.images[] | select(.name == "ghcr.io/patricklika/mcp-router") | .newTag' manifests/kustomization.yaml)"
+          echo "Pinned tag: $TAG"
+          if [[ "$TAG" == "latest" ]]; then
+            echo "::error::Never :latest. Pin the sha- tag the build workflow produced."
+            exit 1
+          fi
+          if [[ "$TAG" == "unset" ]]; then
+            echo "::warning::No image built yet. Merge to main, then merge the bump PR the build opens."
+          fi
+
+      - name: Sign-in cannot be switched off
+        run: |
+          set -euo pipefail
+          # The router controls the house. ROUTER_AUTH=none is for a laptop,
+          # never for the cluster.
+          if grep -rEn 'ROUTER_AUTH\s*[=:]\s*"?none' manifests/; then
+            echo "::error::ROUTER_AUTH=none in the manifests would publish the router with no sign-in."
+            exit 1
+          fi
+
+      - name: Nothing exposed except through the tunnel
+        run: |
+          set -euo pipefail
+          TYPES="$(yq -r 'select(.kind == "Service") | .spec.type' rendered.yaml | sort -u)"
+          if [[ "$TYPES" != "ClusterIP" ]]; then
+            echo "::error::Services must be ClusterIP; found: $TYPES"
+            exit 1
+          fi

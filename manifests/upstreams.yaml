@@ -1,0 +1,21 @@
+# The MCP servers that sit behind the router. Not secret: tokens are named
+# here by the environment variable that holds them, and live in the
+# mcp-router-secrets Secret (see README).
+#
+# Each server's tools are exposed to Claude as <name>_<tool>.
+# An upstream whose token is not set is skipped with a warning, so adding one
+# here before creating its token is harmless.
+upstreams:
+  # Roadmap step 2: Home Assistant's built-in MCP Server integration.
+  # Exposes only the entities exposed to Assist (Settings > Voice assistants >
+  # Expose). Token: a long-lived access token from an HA user.
+  - name: ha
+    url: http://home-assistant.default.svc.cluster.local:8123/api/mcp
+    token_env: HA_TOKEN
+
+  # Roadmap step 1: the notes repo, through GitHub's own hosted MCP server.
+  # /x/repos limits it to the file and repo tools. Token: a fine-grained PAT
+  # that can only see the notes repo (Contents: read and write).
+  - name: notes
+    url: https://api.githubcopilot.com/mcp/x/repos
+    token_env: GITHUB_NOTES_TOKEN

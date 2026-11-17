@@ -1,0 +1,14 @@
+# ClusterIP only. The tunnel reaches it from inside the cluster; nothing is
+# forwarded at the router and no port is opened on the Pi.
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-router
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: mcp-router
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http

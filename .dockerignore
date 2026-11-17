@@ -1,0 +1,8 @@
+.git
+.github
+manifests
+argocd
+tests
+*.md
+__pycache__
+.pytest_cache

@@ -1,0 +1,75 @@
+# Builds the arm64 image on every change to the router code, pushes it to
+# GHCR, and opens a PR pinning the new tag. Nothing deploys until you merge
+# that PR.
+name: build
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - router/**
+      - requirements.txt
+      - Dockerfile
+      - .github/workflows/build.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+  pull-requests: write
+
+env:
+  IMAGE: ghcr.io/patricklika/mcp-router
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Tests pass before anything is published
+        run: |
+          pip install -r requirements-dev.txt
+          pytest -q
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Tag
+        id: tag
+        run: echo "tag=sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/arm64
+          push: true
+          tags: ${{ env.IMAGE }}:${{ steps.tag.outputs.tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Open a PR pinning the new image
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          BRANCH="bump/router-${TAG}"
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$BRANCH"
+          yq -i '(.images[] | select(.name == strenv(IMAGE)) | .newTag) = strenv(TAG)' manifests/kustomization.yaml
+          git add manifests/kustomization.yaml
+          git commit -m "chore: deploy mcp-router ${TAG}"
+          git push -u origin "$BRANCH"
+          gh pr create \
+            --title "chore: deploy mcp-router ${TAG}" \
+            --body "Pins \`${IMAGE}:${TAG}\`, built from ${GITHUB_SHA}. Merging restarts the router; Claude reconnects on its own."

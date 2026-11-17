@@ -1,0 +1,80 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-router
+  labels:
+    app.kubernetes.io/name: mcp-router
+spec:
+  replicas: 1
+  # The data volume is ReadWriteOnce; a rolling update would deadlock on it.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mcp-router
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mcp-router
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: router
+          # Tag is pinned in kustomization.yaml and bumped by a PR from
+          # .github/workflows/build.yml. Never :latest.
+          image: ghcr.io/patricklika/mcp-router
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: mcp-router-env
+            # Required, not optional: without its OAuth settings the router
+            # refuses to start rather than run open to the internet.
+            - secretRef:
+                name: mcp-router-secrets
+          volumeMounts:
+            - name: config
+              mountPath: /config
+              readOnly: true
+            - name: data
+              mountPath: /data
+            - name: tmp
+              mountPath: /tmp
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 30
+            failureThreshold: 3
+          resources:
+            requests:
+              memory: 96Mi
+              cpu: 25m
+            limits:
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+      volumes:
+        - name: config
+          configMap:
+            name: mcp-router-upstreams
+        - name: data
+          persistentVolumeClaim:
+            claimName: mcp-router-data
+        - name: tmp
+          emptyDir: {}

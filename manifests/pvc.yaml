@@ -1,0 +1,19 @@
+# Encrypted OAuth state: Claude's client registration and the GitHub tokens
+# behind each sign-in. Losing it is not a disaster -- you reconnect the
+# connector in Claude once -- but it should not happen on every restart.
+#
+# Prune=false for the same reason as in ts6-k3s: deleting a volume stays a
+# deliberate act, never a side effect of a `git rm`.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mcp-router-data
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 256Mi
