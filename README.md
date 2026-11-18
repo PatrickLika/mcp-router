@@ -6,8 +6,7 @@ One Claude connector in front of every self-hosted MCP server on the Pi.
  Claude (phone, web, desktop)
         │  HTTPS, GitHub sign-in
         ▼
- tunnel ─▶ mcp-router (namespace mcp) ──▶ Home Assistant   /api/mcp      tools: ha_*
-                                     └──▶ GitHub notes repo (hosted)     tools: notes_*
+ tunnel ─▶ mcp-router (namespace mcp) ──▶ GitHub notes repo (hosted)     tools: notes_*
                                      └──▶ … next servers from the roadmap
 ```
 
@@ -38,32 +37,17 @@ GitHub → Settings → Developer settings → OAuth Apps → **New OAuth App**
 
 Generate a client secret. You need the client ID and secret in step 4.
 
-### 2. Home Assistant token (roadmap step 2)
+### 2. Home Assistant (roadmap step 2): skip
 
-In Home Assistant:
+Home Assistant runs on Home Assistant OS on the Pi 5 and is already connected
+to Claude as its own "Home Assistant" connector, so the `ha` upstream in
+[`manifests/upstreams.yaml`](manifests/upstreams.yaml) is `enabled: false`.
+Mounting it here as well would show every Home Assistant tool twice.
 
-1. **Settings → Devices & services → Add integration → Model Context Protocol
-   Server.** Keep the default "Assist" API.
-2. **Settings → Voice assistants → Expose** — only these entities are visible
-   to Claude. Expose the lights, heating, plugs and the gaming PC switches.
-3. Your user profile → **Security → Long-lived access tokens → Create**.
-   Name it `mcp-router`.
-
-Check the token works from the cluster before going further:
-
-```bash
-kubectl run -it --rm hacheck --image=curlimages/curl --restart=Never -- \
-  curl -s -o /dev/null -w '%{http_code}\n' -X POST \
-  -H "Authorization: Bearer <token>" -H 'Content-Type: application/json' \
-  -H 'Accept: application/json, text/event-stream' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"check","version":"0"}}}' \
-  http://home-assistant.default.svc.cluster.local:8123/api/mcp
-```
-
-`200` means good. `401` is the token. `404` means the integration is not
-enabled. If Home Assistant no longer runs in the cluster (e.g. it moved to
-Home Assistant OS on the Pi 5), change the `ha` URL in
-[`manifests/upstreams.yaml`](manifests/upstreams.yaml) to its LAN address.
+To move it behind the router later: remove the direct connector in Claude, set
+`enabled: true`, create a long-lived access token in Home Assistant (your user
+profile → **Security → Long-lived access tokens**, name it `mcp-router`), and
+add it to the Secret in step 4 as `HA_TOKEN`.
 
 ### 3. Notes repo token (roadmap step 1)
 
@@ -86,7 +70,6 @@ kubectl -n mcp create secret generic mcp-router-secrets \
   --from-literal=GITHUB_CLIENT_ID=<from step 1> \
   --from-literal=GITHUB_CLIENT_SECRET=<from step 1> \
   --from-literal=ROUTER_JWT_SIGNING_KEY="$(openssl rand -hex 32)" \
-  --from-literal=HA_TOKEN=<from step 2> \
   --from-literal=GITHUB_NOTES_TOKEN=<from step 3>
 ```
 
@@ -121,7 +104,7 @@ kubectl -n mcp get pods,svc,pvc -w
 kubectl -n mcp logs deploy/mcp-router
 ```
 
-The log line `mounted upstreams: ha, notes` is the one you want. A
+The log line `mounted upstreams: notes` is the one you want. A
 `skipping …: … is not set` line names a missing Secret key.
 
 ### 7. Tunnel
